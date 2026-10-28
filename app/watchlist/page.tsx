@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import MovizzLogo from "@/components/svgs/MovizzLogo";
+import { authClient } from "@/lib/auth-client";
 import {
   Bookmark,
   Film,
@@ -21,15 +21,23 @@ import {
   Undo2,
   ListChecks,
   Eye,
+  Cloud,
+  HardDrive,
+  RefreshCw,
+  Sparkles,
 } from "lucide-react";
+import {
+  getGuestWatchlist,
+  saveGuestWatchlist,
+} from "@/lib/watchlist-client";
 
 /* -------------------------------------------------------------------------- */
-/*  Types & data                                                              */
+/*  Types & Constants                                                         */
 /* -------------------------------------------------------------------------- */
 
 type MediaType = "movie" | "tv";
 
-interface WishlistItem {
+export interface WishlistItem {
   id: number;
   title: string;
   type: MediaType;
@@ -47,13 +55,9 @@ type SortKey = "recent" | "rating" | "year" | "title";
 type StatusFilter = "all" | "unwatched" | "watched";
 type ViewMode = "grid" | "list";
 
-const STORAGE_KEY = "movizz:wishlist:v2";
 const DAY = 86_400_000;
 
-// DUMMY WISHLIST DATA
-// Developer Note: Replace this with your Neon DB / Better Auth user wishlist logic.
-// localStorage below is only a stopgap so changes survive a refresh while you build the backend.
-const INITIAL_WISHLIST: WishlistItem[] = [
+const DEFAULT_DEMO_ITEMS: WishlistItem[] = [
   {
     id: 550,
     title: "Fight Club",
@@ -124,21 +128,20 @@ const SORT_LABELS: Record<SortKey, string> = {
   title: "Title A–Z",
 };
 
-/* -------------------------------------------------------------------------- */
-/*  Small helpers                                                             */
-/* -------------------------------------------------------------------------- */
-
 const cn = (...parts: Array<string | false | null | undefined>) =>
   parts.filter(Boolean).join(" ");
 
 const genresOf = (item: WishlistItem) =>
   item.genre
-    .split("/")
-    .map((g) => g.trim())
-    .filter(Boolean);
+    ? item.genre.split("/").map((g) => g.trim()).filter(Boolean)
+    : ["Cinema"];
 
 const trailerUrl = (title: string) =>
   `https://www.youtube.com/results?search_query=${encodeURIComponent(title)}+trailer`;
+
+/* -------------------------------------------------------------------------- */
+/*  UI Components                                                             */
+/* -------------------------------------------------------------------------- */
 
 function Poster({
   src,
@@ -155,7 +158,7 @@ function Poster({
       <div
         className={cn(
           "flex items-center justify-center bg-zinc-900 text-zinc-600",
-          className,
+          className
         )}
         role="img"
         aria-label={alt}
@@ -165,7 +168,6 @@ function Poster({
     );
   }
   return (
-    // eslint-disable-next-line @next/next/no-img-element
     <img
       src={src}
       alt={alt}
@@ -175,10 +177,6 @@ function Poster({
     />
   );
 }
-
-/* -------------------------------------------------------------------------- */
-/*  Item action buttons (shared by grid + list)                               */
-/* -------------------------------------------------------------------------- */
 
 function IconButton({
   label,
@@ -206,8 +204,8 @@ function IconButton({
         active
           ? "bg-[#F5C518] text-black"
           : danger
-            ? "bg-zinc-900 text-zinc-400 hover:bg-red-950/60 hover:text-red-400"
-            : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white",
+          ? "bg-zinc-900 text-zinc-400 hover:bg-red-950/60 hover:text-red-400"
+          : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-white"
       )}
     >
       {children}
@@ -260,12 +258,17 @@ function ItemActions({
 }
 
 /* -------------------------------------------------------------------------- */
-/*  Page                                                                      */
+/*  Main Watchlist Page Component                                             */
 /* -------------------------------------------------------------------------- */
 
 export default function WishlistPage() {
-  const [items, setItems] = useState<WishlistItem[]>(INITIAL_WISHLIST);
-  const [hydrated, setHydrated] = useState(false);
+  const { data: session, isPending: sessionLoading } = authClient.useSession();
+  const user = session?.user;
+
+  const [items, setItems] = useState<WishlistItem[]>([]);
+  const [loadingItems, setLoadingItems] = useState(true);
+  const [guestCountToSync, setGuestCountToSync] = useState(0);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | MediaType>("all");
@@ -284,39 +287,77 @@ export default function WishlistPage() {
   } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  /* ---- persistence (replace with DB calls) ---- */
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as {
-          items: WishlistItem[];
-          view?: ViewMode;
-        };
-        if (Array.isArray(parsed.items)) setItems(parsed.items);
-        if (parsed.view) setView(parsed.view);
+  /* ---- Load items: DB (if logged in) or LocalStorage (if guest) ---- */
+  const loadData = useCallback(async () => {
+    setLoadingItems(true);
+
+    if (user) {
+      try {
+        const res = await fetch("/api/watchlist");
+        if (res.ok) {
+          const data = await res.json();
+          const dbItems = Array.isArray(data.items) ? data.items : [];
+          setItems(dbItems);
+
+          // Check if user has un-synced guest items in localStorage
+          const localGuestItems = getGuestWatchlist();
+          if (localGuestItems.length > 0) {
+            const dbIds = new Set(dbItems.map((i: any) => `${i.id}_${i.type}`));
+            const unSynced = localGuestItems.filter(
+              (g) => !dbIds.has(`${g.id}_${g.type}`)
+            );
+            setGuestCountToSync(unSynced.length);
+          }
+        }
+      } catch (err) {
+        console.error("Error loading DB watchlist:", err);
       }
-    } catch {
-      /* ignore corrupt storage */
+    } else {
+      // Guest mode: Read from localStorage
+      const local = getGuestWatchlist();
+      if (local.length > 0) {
+        setItems(local);
+      } else {
+        // Initialize guest with defaults if first time
+        saveGuestWatchlist(DEFAULT_DEMO_ITEMS);
+        setItems(DEFAULT_DEMO_ITEMS);
+      }
     }
-    setHydrated(true);
-  }, []);
+    setLoadingItems(false);
+  }, [user]);
 
   useEffect(() => {
-    if (!hydrated) return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ items, view }));
-    } catch {
-      /* storage full or unavailable */
+    if (!sessionLoading) {
+      loadData();
     }
-  }, [items, view, hydrated]);
+  }, [user, sessionLoading, loadData]);
 
-  useEffect(
-    () => () => {
-      if (toastTimer.current) clearTimeout(toastTimer.current);
-    },
-    [],
-  );
+  // Sync guest items to DB
+  const handleSyncGuestItems = async () => {
+    if (!user || isSyncing) return;
+    setIsSyncing(true);
+    try {
+      const guestItems = getGuestWatchlist();
+      const res = await fetch("/api/watchlist/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items: guestItems }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setItems(data.items);
+        setGuestCountToSync(0);
+        showToast(
+          `Synced ${data.syncedCount} titles from your guest session to the cloud!`,
+          () => {}
+        );
+      }
+    } catch (e) {
+      console.error("Sync error:", e);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const showToast = useCallback((message: string, undo: () => void) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -324,35 +365,81 @@ export default function WishlistPage() {
     toastTimer.current = setTimeout(() => setToast(null), 6000);
   }, []);
 
-  /* ---- mutations ---- */
-  const removeItems = (ids: number[]) => {
-    // TODO: await deleteWishlistItems(userId, ids)
+  /* ---- Mutations: remove, patch, clear ---- */
+  const removeItems = async (ids: number[]) => {
     const snapshot = items;
     const count = ids.length;
+    const removedItem = snapshot.find((i) => i.id === ids[0]);
+
+    // Optimistic local state update
     setItems((prev) => prev.filter((i) => !ids.includes(i.id)));
     setSelected(new Set());
     if (pickId !== null && ids.includes(pickId)) setPickId(null);
+
+    try {
+      if (user) {
+        for (const id of ids) {
+          await fetch(`/api/watchlist?id=${id}`, { method: "DELETE" });
+        }
+      } else {
+        // Guest mode update localStorage
+        const updated = snapshot.filter((i) => !ids.includes(i.id));
+        saveGuestWatchlist(updated);
+      }
+    } catch (err) {
+      console.error("Failed to delete items:", err);
+    }
+
     showToast(
       count === 1
-        ? `Removed “${snapshot.find((i) => i.id === ids[0])?.title}”`
+        ? `Removed “${removedItem?.title}”`
         : `Removed ${count} titles`,
-      () => {
-        // TODO: re-insert in DB
+      async () => {
+        // Undo action
         setItems(snapshot);
+        if (user) {
+          for (const item of snapshot.filter((i) => ids.includes(i.id))) {
+            await fetch("/api/watchlist", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(item),
+            });
+          }
+        } else {
+          saveGuestWatchlist(snapshot);
+        }
         setToast(null);
-      },
+      }
     );
   };
 
-  const patchItems = (ids: number[], patch: Partial<WishlistItem>) => {
-    // TODO: await updateWishlistItems(userId, ids, patch)
+  const patchItems = async (ids: number[], patch: Partial<WishlistItem>) => {
+    // Optimistic update
     setItems((prev) =>
-      prev.map((i) => (ids.includes(i.id) ? { ...i, ...patch } : i)),
+      prev.map((i) => (ids.includes(i.id) ? { ...i, ...patch } : i))
     );
+
+    try {
+      if (user) {
+        await fetch("/api/watchlist", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids, patch }),
+        });
+      } else {
+        const next = items.map((i) =>
+          ids.includes(i.id) ? { ...i, ...patch } : i
+        );
+        saveGuestWatchlist(next);
+      }
+    } catch (err) {
+      console.error("Failed to patch items:", err);
+    }
   };
 
   const toggleWatched = (item: WishlistItem) =>
     patchItems([item.id], { watched: !item.watched });
+
   const togglePin = (item: WishlistItem) =>
     patchItems([item.id], { pinned: !item.pinned });
 
@@ -369,7 +456,7 @@ export default function WishlistPage() {
     setSelected(new Set());
   };
 
-  /* ---- derived data ---- */
+  /* ---- Derived data ---- */
   const allGenres = useMemo(() => {
     const set = new Set<string>();
     items.forEach((i) => genresOf(i).forEach((g) => set.add(g)));
@@ -398,15 +485,16 @@ export default function WishlistPage() {
         return false;
       return true;
     });
+
     const cmp: Record<SortKey, (a: WishlistItem, b: WishlistItem) => number> = {
       recent: (a, b) => b.addedAt - a.addedAt,
       rating: (a, b) => b.rating - a.rating,
       year: (a, b) => Number(b.year) - Number(a.year),
       title: (a, b) => a.title.localeCompare(b.title),
     };
-    // Pinned titles always float to the top, then the chosen sort applies.
+
     return [...list].sort(
-      (a, b) => Number(b.pinned) - Number(a.pinned) || cmp[sort](a, b),
+      (a, b) => Number(b.pinned) - Number(a.pinned) || cmp[sort](a, b)
     );
   }, [items, query, typeFilter, status, genre, sort]);
 
@@ -432,12 +520,7 @@ export default function WishlistPage() {
   };
 
   const spotlight = items.find((i) => i.id === pickId) ?? null;
-
   const selectAllVisible = () => setSelected(new Set(visible.map((i) => i.id)));
-
-  /* ---------------------------------------------------------------------- */
-  /*  Render                                                                */
-  /* ---------------------------------------------------------------------- */
 
   const chip = (active: boolean) =>
     cn(
@@ -445,18 +528,54 @@ export default function WishlistPage() {
       "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F5C518]",
       active
         ? "bg-[#F5C518] text-black"
-        : "bg-zinc-900 text-zinc-400 ring-1 ring-zinc-800 hover:text-white hover:ring-zinc-700",
+        : "bg-zinc-900 text-zinc-400 ring-1 ring-zinc-800 hover:text-white hover:ring-zinc-700"
     );
 
   return (
     <div className="min-h-screen bg-black px-4 pb-40 pt-6 text-white sm:px-6 lg:px-8">
-      <div className="flex justify-center pb-8">
-        <Link href="/home" aria-label="Movizz home">
-          <MovizzLogo />
-        </Link>
-      </div>
-
       <div className="mx-auto max-w-6xl">
+        {/* Guest Mode / Cloud Sync Banner */}
+        <div className="mb-6">
+          {user ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-900/40 bg-emerald-950/20 px-4 py-3 text-xs text-emerald-300 backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <Cloud size={16} className="text-emerald-400" />
+                <span>
+                  <strong>Cloud Synced</strong> active for{" "}
+                  <span className="text-white font-medium">{user.email}</span>
+                </span>
+              </div>
+              {guestCountToSync > 0 && (
+                <button
+                  type="button"
+                  onClick={handleSyncGuestItems}
+                  disabled={isSyncing}
+                  className="flex items-center gap-1.5 rounded-xl bg-[#F5C518] px-3 py-1.5 font-bold text-black transition hover:bg-amber-400 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw size={13} className={isSyncing ? "animate-spin" : ""} />
+                  <span>Sync {guestCountToSync} guest items to cloud</span>
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-900/40 bg-amber-950/20 px-4 py-3 text-xs text-amber-200 backdrop-blur-md">
+              <div className="flex items-center gap-2">
+                <HardDrive size={16} className="text-amber-400 shrink-0" />
+                <span>
+                  <strong>Guest Mode Active</strong> · Your watchlist is securely saved in your browser&apos;s localStorage.
+                </span>
+              </div>
+              <Link
+                href="/login"
+                className="flex items-center gap-1.5 rounded-xl bg-[#F5C518] px-3.5 py-1.5 font-bold text-black transition hover:bg-amber-400"
+              >
+                <span>Sign in with Google to Sync</span>
+                <ArrowRight size={12} />
+              </Link>
+            </div>
+          )}
+        </div>
+
         {/* ---------------------------- Header ---------------------------- */}
         <header className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
           <div>
@@ -585,8 +704,8 @@ export default function WishlistPage() {
                   type="search"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search your wishlist"
-                  aria-label="Search your wishlist"
+                  placeholder="Search your watchlist"
+                  aria-label="Search your watchlist"
                   className="w-full rounded-xl bg-zinc-900 py-2.5 pl-10 pr-9 text-sm text-white placeholder:text-zinc-500 ring-1 ring-zinc-800 transition focus:outline-none focus:ring-2 focus:ring-[#F5C518]"
                 />
                 {query && (
@@ -605,114 +724,119 @@ export default function WishlistPage() {
                 <select
                   value={sort}
                   onChange={(e) => setSort(e.target.value as SortKey)}
-                  aria-label="Sort wishlist"
-                  className="rounded-xl bg-zinc-900 px-3 py-2.5 text-sm text-zinc-200 ring-1 ring-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#F5C518] cursor-pointer"
+                  aria-label="Sort watchlist"
+                  className="h-10 rounded-xl bg-zinc-900 px-3 text-xs font-semibold text-zinc-200 ring-1 ring-zinc-800 transition focus:outline-none focus:ring-2 focus:ring-[#F5C518] cursor-pointer"
                 >
-                  {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
-                    <option key={k} value={k}>
-                      {SORT_LABELS[k]}
+                  {(Object.keys(SORT_LABELS) as SortKey[]).map((key) => (
+                    <option key={key} value={key} className="bg-zinc-900">
+                      {SORT_LABELS[key]}
                     </option>
                   ))}
                 </select>
 
-                <div
-                  className="flex rounded-xl bg-zinc-900 p-1 ring-1 ring-zinc-800"
-                  role="group"
-                  aria-label="Layout"
-                >
-                  {(
-                    [
-                      ["grid", LayoutGrid, "Grid view"],
-                      ["list", List, "List view"],
-                    ] as const
-                  ).map(([mode, Icon, label]) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setView(mode)}
-                      aria-label={label}
-                      aria-pressed={view === mode}
-                      title={label}
-                      className={cn(
-                        "rounded-lg p-2 transition cursor-pointer",
-                        view === mode
-                          ? "bg-zinc-700 text-white"
-                          : "text-zinc-500 hover:text-white",
-                      )}
-                    >
-                      <Icon size={15} />
-                    </button>
-                  ))}
+                <div className="flex rounded-xl bg-zinc-900 p-1 ring-1 ring-zinc-800">
+                  <button
+                    type="button"
+                    onClick={() => setView("grid")}
+                    aria-label="Grid view"
+                    className={cn(
+                      "rounded-lg p-2 transition cursor-pointer",
+                      view === "grid"
+                        ? "bg-[#F5C518] text-black"
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    <LayoutGrid size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setView("list")}
+                    aria-label="List view"
+                    className={cn(
+                      "rounded-lg p-2 transition cursor-pointer",
+                      view === "list"
+                        ? "bg-[#F5C518] text-black"
+                        : "text-zinc-400 hover:text-white"
+                    )}
+                  >
+                    <List size={16} />
+                  </button>
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            {/* Filter Chips */}
+            <div className="flex flex-wrap items-center gap-2 pt-1">
               <button
                 type="button"
-                className={chip(typeFilter === "all")}
                 onClick={() => setTypeFilter("all")}
+                className={chip(typeFilter === "all")}
               >
-                All
+                All formats
               </button>
               <button
                 type="button"
-                className={chip(typeFilter === "movie")}
                 onClick={() => setTypeFilter("movie")}
+                className={chip(typeFilter === "movie")}
               >
-                <Film size={12} /> Movies
+                <Film size={13} /> Movies
               </button>
               <button
                 type="button"
-                className={chip(typeFilter === "tv")}
                 onClick={() => setTypeFilter("tv")}
+                className={chip(typeFilter === "tv")}
               >
-                <Tv size={12} /> Series
+                <Tv size={13} /> Series
               </button>
 
-              <span
-                className="mx-1 hidden h-5 w-px bg-zinc-800 sm:block"
-                aria-hidden
-              />
+              <span className="mx-1 h-4 w-px bg-zinc-800" />
 
               <button
                 type="button"
+                onClick={() => setStatus("all")}
+                className={chip(status === "all")}
+              >
+                All status
+              </button>
+              <button
+                type="button"
+                onClick={() => setStatus("unwatched")}
                 className={chip(status === "unwatched")}
-                onClick={() =>
-                  setStatus(status === "unwatched" ? "all" : "unwatched")
-                }
               >
-                To watch
+                <Eye size={13} /> Unwatched
               </button>
               <button
                 type="button"
+                onClick={() => setStatus("watched")}
                 className={chip(status === "watched")}
-                onClick={() =>
-                  setStatus(status === "watched" ? "all" : "watched")
-                }
               >
-                <Eye size={12} /> Watched
+                <Check size={13} /> Watched
               </button>
 
-              <select
-                value={genre}
-                onChange={(e) => setGenre(e.target.value)}
-                aria-label="Filter by genre"
-                className="rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-semibold text-zinc-300 ring-1 ring-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#F5C518] cursor-pointer"
-              >
-                <option value="all">Any genre</option>
-                {allGenres.map((g) => (
-                  <option key={g} value={g}>
-                    {g}
-                  </option>
-                ))}
-              </select>
+              {allGenres.length > 1 && (
+                <>
+                  <span className="mx-1 h-4 w-px bg-zinc-800" />
+                  <select
+                    value={genre}
+                    onChange={(e) => setGenre(e.target.value)}
+                    aria-label="Filter by genre"
+                    className="h-8 rounded-full bg-zinc-900 px-3 text-xs font-semibold text-zinc-300 ring-1 ring-zinc-800 focus:outline-none focus:ring-2 focus:ring-[#F5C518] cursor-pointer"
+                  >
+                    <option value="all">All genres</option>
+                    {allGenres.map((g) => (
+                      <option key={g} value={g} className="bg-zinc-900">
+                        {g}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
 
               <div className="ml-auto flex items-center gap-2">
                 <button
                   type="button"
                   onClick={pickForMe}
-                  className="flex items-center gap-1.5 rounded-full bg-[#F5C518]/10 px-3.5 py-1.5 text-xs font-semibold text-[#F5C518] ring-1 ring-[#F5C518]/30 transition hover:bg-[#F5C518]/20 cursor-pointer"
+                  className="flex items-center gap-1.5 rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-semibold text-zinc-300 ring-1 ring-zinc-800 transition hover:bg-zinc-800 hover:text-white cursor-pointer"
                 >
                   <Shuffle size={13} />
                   <span>Pick for me</span>
@@ -722,239 +846,212 @@ export default function WishlistPage() {
                   onClick={() =>
                     selectMode ? exitSelectMode() : setSelectMode(true)
                   }
-                  aria-pressed={selectMode}
-                  className={chip(selectMode)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition cursor-pointer",
+                    selectMode
+                      ? "bg-zinc-800 text-white ring-1 ring-zinc-700"
+                      : "bg-zinc-900 text-zinc-400 ring-1 ring-zinc-800 hover:text-white"
+                  )}
                 >
                   <ListChecks size={13} />
                   <span>{selectMode ? "Done" : "Select"}</span>
                 </button>
               </div>
             </div>
-
-            <p className="text-xs text-zinc-500" aria-live="polite">
-              Showing {visible.length} of {stats.total}
-              {hasActiveFilters && (
-                <>
-                  {" · "}
-                  <button
-                    type="button"
-                    onClick={resetFilters}
-                    className="text-[#F5C518] underline-offset-2 hover:underline cursor-pointer"
-                  >
-                    Reset filters
-                  </button>
-                </>
-              )}
-            </p>
           </div>
         )}
 
-        {/* ----------------------------- Items ---------------------------- */}
-        {visible.length > 0 ? (
-          <ul
-            className={cn(
-              view === "grid"
-                ? "grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
-                : "grid grid-cols-1 gap-3 md:grid-cols-2",
-            )}
-          >
-            {visible.map((item) => {
-              const isSelected = selected.has(item.id);
-              const actions = (
-                <ItemActions
-                  item={item}
-                  onWatched={() => toggleWatched(item)}
-                  onPin={() => togglePin(item)}
-                  onRemove={() => removeItems([item.id])}
-                />
-              );
-
-              const selectBadge = selectMode && (
-                <span
-                  aria-hidden
+        {/* --------------------------- Titles List --------------------------- */}
+        {loadingItems ? (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 py-12">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <div
+                key={n}
+                className="aspect-2/3 animate-pulse rounded-2xl bg-zinc-900"
+              />
+            ))}
+          </div>
+        ) : visible.length > 0 ? (
+          view === "grid" ? (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {visible.map((item) => (
+                <div
+                  key={`${item.id}_${item.type}`}
                   className={cn(
-                    "absolute right-2 top-2 z-10 flex h-6 w-6 items-center justify-center rounded-full ring-2 transition",
-                    isSelected
-                      ? "bg-[#F5C518] text-black ring-[#F5C518]"
-                      : "bg-black/70 text-transparent ring-white/60",
+                    "group relative flex flex-col overflow-hidden rounded-2xl bg-zinc-950 ring-1 transition-all duration-300",
+                    selected.has(item.id)
+                      ? "ring-2 ring-[#F5C518]"
+                      : "ring-zinc-800/80 hover:ring-zinc-700 hover:shadow-xl hover:-translate-y-1"
                   )}
                 >
-                  <Check size={14} strokeWidth={3} />
-                </span>
-              );
-
-              if (view === "grid") {
-                return (
-                  <li key={item.id} className="group">
-                    <div className="relative">
-                      {selectMode ? (
-                        <button
-                          type="button"
-                          onClick={() => toggleSelected(item.id)}
-                          aria-pressed={isSelected}
-                          aria-label={`Select ${item.title}`}
-                          className="absolute inset-0 z-20 rounded-2xl cursor-pointer"
-                        />
-                      ) : (
-                        <Link
-                          href={`/title/${item.id}?type=${item.type}`}
-                          aria-label={`View ${item.title}`}
-                          className="absolute inset-0 z-10 rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#F5C518]"
-                        />
-                      )}
+                  {/* Select Mode Checkbox Overlay */}
+                  {selectMode && (
+                    <button
+                      type="button"
+                      onClick={() => toggleSelected(item.id)}
+                      className="absolute inset-0 z-20 flex items-start justify-end p-2.5 bg-black/40 cursor-pointer"
+                    >
                       <div
                         className={cn(
-                          "relative aspect-[2/3] overflow-hidden rounded-2xl bg-zinc-900 ring-1 transition",
-                          isSelected
-                            ? "ring-2 ring-[#F5C518]"
-                            : "ring-white/10 group-hover:ring-white/25",
+                          "flex h-6 w-6 items-center justify-center rounded-lg border text-black font-bold",
+                          selected.has(item.id)
+                            ? "bg-[#F5C518] border-[#F5C518]"
+                            : "border-white/50 bg-black/60 text-transparent"
                         )}
                       >
-                        <Poster
-                          src={item.poster}
-                          alt={item.title}
-                          className={cn(
-                            "h-full w-full object-cover transition duration-500 group-hover:scale-[1.03]",
-                            item.watched && "opacity-45 saturate-50",
-                          )}
-                        />
-                        <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 text-[11px] font-bold text-[#F5C518] backdrop-blur-md">
-                          <Star size={10} className="fill-[#F5C518]" />
-                          <span>{item.rating.toFixed(1)}</span>
-                        </div>
-                        {item.watched && (
-                          <div className="absolute inset-x-0 bottom-0 bg-black/70 py-1.5 text-center text-xs font-semibold text-zinc-200">
-                            Watched
-                          </div>
-                        )}
-                        {item.pinned && !selectMode && (
-                          <Pin
-                            size={14}
-                            className="absolute right-2 top-2 fill-[#F5C518] text-[#F5C518]"
-                            aria-label="Pinned"
-                          />
-                        )}
-                        {selectBadge}
+                        <Check size={14} strokeWidth={3} />
                       </div>
-                    </div>
+                    </button>
+                  )}
 
-                    <div className="mt-3">
-                      <h2 className="line-clamp-1 text-sm font-bold">
-                        {item.title}
-                      </h2>
-                      <p className="mt-0.5 flex items-center gap-1.5 text-xs text-zinc-500">
-                        {item.type === "tv" ? (
-                          <Tv size={11} />
-                        ) : (
-                          <Film size={11} />
-                        )}
-                        {item.year}
-                        <span aria-hidden>·</span>
-                        <span className="line-clamp-1">
-                          {genresOf(item)[0]}
+                  {/* Poster Link */}
+                  <Link
+                    href={`/title/${item.id}?type=${item.type}`}
+                    className="relative aspect-2/3 overflow-hidden bg-zinc-900"
+                  >
+                    <Poster
+                      src={item.poster}
+                      alt={item.title}
+                      className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                    />
+
+                    {/* Gradient */}
+                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-80" />
+
+                    {/* Top Badges */}
+                    <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                      {item.pinned && (
+                        <span className="flex items-center gap-1 rounded-md bg-[#F5C518] px-2 py-0.5 text-[10px] font-bold text-black shadow-md">
+                          <Pin size={10} className="fill-black" />
+                          <span>Pinned</span>
                         </span>
-                      </p>
-                      {!selectMode && <div className="mt-2.5">{actions}</div>}
+                      )}
+                      {item.watched && (
+                        <span className="flex items-center gap-1 rounded-md bg-emerald-500 px-2 py-0.5 text-[10px] font-bold text-black shadow-md">
+                          <Check size={10} strokeWidth={3} />
+                          <span>Watched</span>
+                        </span>
+                      )}
                     </div>
-                  </li>
-                );
-              }
 
-              // List view
-              return (
-                <li
-                  key={item.id}
+                    {item.rating > 0 && (
+                      <div className="absolute top-2.5 right-2.5 flex items-center gap-1 rounded-md bg-black/80 px-2 py-0.5 text-[10px] font-bold text-[#F5C518] backdrop-blur-md">
+                        <Star size={10} className="fill-current" />
+                        <span>{item.rating}</span>
+                      </div>
+                    )}
+                  </Link>
+
+                  {/* Details Card Content */}
+                  <div className="flex flex-1 flex-col justify-between p-3.5">
+                    <div>
+                      <Link
+                        href={`/title/${item.id}?type=${item.type}`}
+                        className="line-clamp-1 text-sm font-bold text-white hover:text-[#F5C518] transition"
+                      >
+                        {item.title}
+                      </Link>
+                      <p className="mt-1 text-[11px] text-zinc-400">
+                        {item.year} · {item.type === "tv" ? "Series" : "Movie"}
+                      </p>
+                    </div>
+
+                    {!selectMode && (
+                      <div className="mt-3 pt-3 border-t border-zinc-900 flex items-center justify-between">
+                        <ItemActions
+                          item={item}
+                          onWatched={() => toggleWatched(item)}
+                          onPin={() => togglePin(item)}
+                          onRemove={() => removeItems([item.id])}
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            /* List View */
+            <div className="divide-y divide-zinc-900 rounded-2xl border border-zinc-800 bg-zinc-950 overflow-hidden">
+              {visible.map((item) => (
+                <div
+                  key={`${item.id}_${item.type}`}
                   className={cn(
-                    "group relative flex gap-4 overflow-hidden rounded-2xl border bg-zinc-950 p-3.5 transition",
-                    isSelected
-                      ? "border-[#F5C518]"
-                      : "border-zinc-800/80 hover:border-zinc-700",
+                    "flex items-center gap-4 p-3.5 transition hover:bg-zinc-900/50",
+                    selected.has(item.id) && "bg-zinc-900/80"
                   )}
                 >
                   {selectMode && (
                     <button
                       type="button"
                       onClick={() => toggleSelected(item.id)}
-                      aria-pressed={isSelected}
-                      aria-label={`Select ${item.title}`}
-                      className="absolute inset-0 z-20 cursor-pointer"
-                    />
+                      className={cn(
+                        "flex h-5 w-5 shrink-0 items-center justify-center rounded border cursor-pointer",
+                        selected.has(item.id)
+                          ? "bg-[#F5C518] border-[#F5C518] text-black"
+                          : "border-zinc-700 bg-zinc-900 text-transparent"
+                      )}
+                    >
+                      <Check size={12} strokeWidth={3} />
+                    </button>
                   )}
-                  <div className="relative h-40 w-28 shrink-0 overflow-hidden rounded-xl bg-zinc-900 ring-1 ring-white/10">
+
+                  <Link
+                    href={`/title/${item.id}?type=${item.type}`}
+                    className="h-16 w-11 shrink-0 overflow-hidden rounded-lg bg-zinc-900"
+                  >
                     <Poster
                       src={item.poster}
                       alt={item.title}
-                      className={cn(
-                        "h-full w-full object-cover",
-                        item.watched && "opacity-45 saturate-50",
-                      )}
+                      className="h-full w-full object-cover"
                     />
-                    <div className="absolute left-2 top-2 flex items-center gap-1 rounded-full bg-black/80 px-2 py-0.5 text-[10px] font-bold text-[#F5C518] backdrop-blur-md">
-                      <Star size={10} className="fill-[#F5C518]" />
-                      <span>{item.rating.toFixed(1)}</span>
-                    </div>
-                  </div>
+                  </Link>
 
-                  <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
-                    <div>
-                      <p className="flex items-center gap-1.5 text-xs text-zinc-500">
-                        {item.type === "tv" ? (
-                          <Tv size={11} />
-                        ) : (
-                          <Film size={11} />
-                        )}
-                        {item.type === "tv" ? "Series" : "Movie"} · {item.year}
-                        {item.watched && (
-                          <span className="text-[#F5C518]">· Watched</span>
-                        )}
-                        {item.pinned && (
-                          <Pin
-                            size={11}
-                            className="fill-[#F5C518] text-[#F5C518]"
-                          />
-                        )}
-                      </p>
-                      <h2 className="mt-0.5 line-clamp-1 text-lg font-bold">
-                        {item.title}
-                      </h2>
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        {genresOf(item).map((g) => (
-                          <span
-                            key={g}
-                            className="rounded-full bg-zinc-900 px-2 py-0.5 text-[11px] text-zinc-400 ring-1 ring-zinc-800"
-                          >
-                            {g}
-                          </span>
-                        ))}
-                      </div>
-                      <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-zinc-400">
-                        {item.overview}
-                      </p>
-                    </div>
-                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
                       <Link
                         href={`/title/${item.id}?type=${item.type}`}
-                        className="flex items-center gap-1.5 rounded-lg bg-[#F5C518] px-3.5 py-1.5 text-xs font-bold text-black transition hover:bg-[#e0b414]"
+                        className="truncate text-sm font-bold text-white hover:text-[#F5C518]"
                       >
-                        <span>View title</span>
-                        <ArrowRight size={13} />
+                        {item.title}
                       </Link>
-                      {!selectMode && actions}
+                      {item.pinned && (
+                        <span className="rounded bg-[#F5C518]/20 px-1.5 py-0.5 text-[9px] font-bold text-[#F5C518]">
+                          PINNED
+                        </span>
+                      )}
+                      {item.watched && (
+                        <span className="rounded bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-bold text-emerald-400">
+                          WATCHED
+                        </span>
+                      )}
                     </div>
+                    <p className="mt-0.5 text-xs text-zinc-400">
+                      {item.year} · {item.type === "tv" ? "Series" : "Movie"} · {item.genre}
+                    </p>
                   </div>
-                  {selectBadge}
-                </li>
-              );
-            })}
-          </ul>
+
+                  {!selectMode && (
+                    <ItemActions
+                      item={item}
+                      onWatched={() => toggleWatched(item)}
+                      onPin={() => togglePin(item)}
+                      onRemove={() => removeItems([item.id])}
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )
         ) : stats.total === 0 ? (
+          /* Empty state */
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-500 ring-1 ring-zinc-800">
               <Bookmark size={28} />
             </div>
-            <h2 className="text-xl font-bold">Your wishlist is empty</h2>
+            <h2 className="text-xl font-bold">Your watchlist is empty</h2>
             <p className="mt-1 max-w-sm text-sm text-zinc-400">
-              Tap the bookmark on any title in Movizz to save it here for later.
+              Browse movies and series, then click &ldquo;Add to Watchlist&rdquo; to save them here.
             </p>
             <Link
               href="/home"
@@ -965,14 +1062,14 @@ export default function WishlistPage() {
             </Link>
           </div>
         ) : (
+          /* No filter match */
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-500 ring-1 ring-zinc-800">
               <Search size={26} />
             </div>
             <h2 className="text-xl font-bold">No titles match</h2>
             <p className="mt-1 max-w-sm text-sm text-zinc-400">
-              Try a different search or clear your filters to see everything
-              you’ve saved.
+              Try adjusting your query or filters.
             </p>
             <button
               type="button"
@@ -984,7 +1081,7 @@ export default function WishlistPage() {
           </div>
         )}
 
-        {/* Clear all (undoable) */}
+        {/* Clear all */}
         {stats.total > 0 && !selectMode && (
           <div className="mt-12 flex justify-center">
             <button
@@ -993,7 +1090,7 @@ export default function WishlistPage() {
               className="flex items-center gap-1.5 text-xs text-zinc-500 transition hover:text-red-400 cursor-pointer"
             >
               <Trash2 size={13} />
-              <span>Clear entire wishlist</span>
+              <span>Clear entire watchlist</span>
             </button>
           </div>
         )}

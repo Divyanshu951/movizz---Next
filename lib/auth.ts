@@ -1,18 +1,24 @@
 import { betterAuth } from "better-auth";
-import { Pool } from "@neondatabase/serverless";
-
-// Neon serverless PostgreSQL connection pool
-const connectionString =
-  process.env.DATABASE_URL ||
-  "postgresql://neondb_owner:dummy@ep-dummy.aws.neon.tech/neondb?sslmode=require";
+import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { db } from "./db";
+import * as schema from "./db/schema";
 
 export const auth = betterAuth({
-  database: new Pool({
-    connectionString,
+  database: drizzleAdapter(db, {
+    provider: "pg",
+    schema: {
+      user: schema.user,
+      session: schema.session,
+      account: schema.account,
+      verification: schema.verification,
+    },
   }),
-  emailAndPassword: {
-    enabled: true,
-    autoSignIn: true,
+  socialProviders: {
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID || "GOOGLE_CLIENT_ID_PLACEHOLDER",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "GOOGLE_CLIENT_SECRET_PLACEHOLDER",
+      enabled: Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET),
+    },
   },
   secret: process.env.BETTER_AUTH_SECRET || "movizz-secret-key-32-chars-minimum-security",
   baseURL: process.env.BETTER_AUTH_URL || "http://localhost:3000",

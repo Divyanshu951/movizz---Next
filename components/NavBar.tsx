@@ -1,6 +1,14 @@
 "use client";
 
-import { Film, Home, SearchIcon, Tv, User } from "lucide-react";
+import {
+  Bookmark,
+  Film,
+  Home,
+  SearchIcon,
+  Tv,
+  User,
+  WatchIcon,
+} from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { cn } from "../lib/utils";
 import { useRouter } from "next/navigation";
@@ -54,7 +62,7 @@ export default function NavBar() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           className="h-full w-full rounded-[3px] border-none bg-neutral-700 px-2 outline-none focus:border-none focus:ring-0 focus:outline-none"
-          placeholder="Search here...(ctrl + shift + k)"
+          placeholder="Search here..."
         />
         <button className="flex h-10 min-w-10 cursor-pointer flex-col items-center justify-between rounded-[3px] bg-gray-700 px-2 py-1 text-gray-300 transition-colors duration-300 hover:text-gray-100">
           <SearchIcon size={18} />
@@ -75,6 +83,13 @@ export default function NavBar() {
       >
         <User size={18} />
         <span className="text-[8px]">Account</span>
+      </button>
+      <button
+        onClick={() => router.push("/watchlist")}
+        className="flex h-10 min-w-10 cursor-pointer flex-col items-center justify-between rounded-[3px] bg-gray-700 px-2 py-1 text-gray-300 transition-colors duration-300 hover:text-gray-100"
+      >
+        <Film size={18} />
+        <span className="text-[8px]">Watchlist</span>
       </button>
 
       {/* <div className="absolute right-23.5 flex gap-px rounded-[3px] border-2 border-slate-800 bg-slate-800">

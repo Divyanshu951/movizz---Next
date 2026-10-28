@@ -1,24 +1,16 @@
-export type { SearchItem } from "@/types/tmdb";
-
-type BaseItem = {
+export type SearchItem = {
   id: number;
-  poster_path: string | null;
+  poster_path?: string | null;
+  backdrop_path?: string | null;
   vote_average?: number;
-};
-
-export type MovieItem = BaseItem & {
-  media_type: "movie";
-  title: string;
+  overview?: string;
+  media_type?: "movie" | "tv" | string;
+  title?: string;
+  name?: string;
   release_date?: string;
-};
-
-export type TvItem = BaseItem & {
-  media_type: "tv";
-  name: string;
   first_air_date?: string;
+  [key: string]: any;
 };
-
-export type SearchItem = MovieItem | TvItem;
 
 export type SearchResponse = {
   page: number;
