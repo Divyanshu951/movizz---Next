@@ -24,10 +24,7 @@ import {
   Sparkles,
   ExternalLink,
 } from "lucide-react";
-import {
-  getGuestWatchlist,
-  clearGuestWatchlist,
-} from "@/lib/watchlist-client";
+import { getGuestWatchlist, clearGuestWatchlist } from "@/lib/watchlist-client";
 
 interface WishlistStats {
   total: number;
@@ -180,7 +177,10 @@ export default function AccountPage() {
   if (isPending) {
     return (
       <div className="min-h-screen bg-black px-4 pb-32 pt-10 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-4xl animate-pulse space-y-6" aria-busy="true">
+        <div
+          className="mx-auto max-w-4xl animate-pulse space-y-6"
+          aria-busy="true"
+        >
           <div className="h-44 rounded-3xl bg-zinc-900" />
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="h-24 rounded-2xl bg-zinc-900" />
@@ -224,7 +224,9 @@ export default function AccountPage() {
                 </div>
 
                 <p className="mt-2 text-sm text-zinc-400 max-w-xl">
-                  You are exploring Movizz as a guest. All titles you save, pin, or mark as watched are kept securely in this browser&apos;s local storage.
+                  You are exploring Movizz as a guest. All titles you save, pin,
+                  or mark as watched are kept securely in this browser&apos;s
+                  local storage.
                 </p>
 
                 {/* Cloud Upgrade CTA */}
@@ -263,7 +265,9 @@ export default function AccountPage() {
               <p className="mt-3 text-3xl font-extrabold tracking-tight text-white">
                 {wishlist ? wishlist.total : 0}
               </p>
-              <p className="text-xs text-zinc-400 mt-0.5">Saved in local storage</p>
+              <p className="text-xs text-zinc-400 mt-0.5">
+                Saved in local storage
+              </p>
             </Link>
 
             <Link
@@ -301,9 +305,13 @@ export default function AccountPage() {
             aria-label="Guest Settings"
             className="rounded-3xl border border-zinc-850 bg-zinc-950 p-6"
           >
-            <h2 className="text-base font-bold text-white mb-2">Guest Session Control</h2>
+            <h2 className="text-base font-bold text-white mb-2">
+              Guest Session Control
+            </h2>
             <p className="text-xs text-zinc-400 leading-relaxed mb-4">
-              Switching browsers or clearing website data removes local guest entries. To save permanently to our Neon PostgreSQL database via Drizzle ORM, sign in with your Google account anytime.
+              Switching browsers or clearing website data removes local guest
+              entries. To save permanently to our Neon PostgreSQL database via
+              Drizzle ORM, sign in with your Google account anytime.
             </p>
             <div className="flex flex-wrap items-center gap-3">
               <button
@@ -483,7 +491,9 @@ export default function AccountPage() {
             <p className="mt-3 text-3xl font-extrabold tracking-tight text-white">
               {wishlist ? wishlist.total : 0}
             </p>
-            <p className="text-xs text-zinc-400 mt-0.5">Titles saved in Neon DB</p>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Titles saved in Neon DB
+            </p>
           </Link>
 
           <Link
@@ -499,7 +509,9 @@ export default function AccountPage() {
             <p className="mt-3 text-3xl font-extrabold tracking-tight text-white">
               {wishlist ? wishlist.watched : 0}
             </p>
-            <p className="text-xs text-zinc-400 mt-0.5">Completed from watchlist</p>
+            <p className="text-xs text-zinc-400 mt-0.5">
+              Completed from watchlist
+            </p>
           </Link>
 
           <div className="relative overflow-hidden rounded-2xl border border-zinc-850 bg-zinc-950 p-5">
@@ -575,36 +587,6 @@ export default function AccountPage() {
               </div>
             </div>
           )}
-        </section>
-
-        {/* Database & Security Info */}
-        <section
-          aria-label="Database and Security"
-          className="rounded-3xl border border-zinc-850 bg-zinc-950 p-6"
-        >
-          <h2 className="text-base font-bold text-white mb-2">
-            Storage & Security
-          </h2>
-          <div className="grid gap-4 sm:grid-cols-2 text-xs text-zinc-400">
-            <div className="rounded-xl border border-zinc-900 bg-zinc-900/40 p-4">
-              <div className="flex items-center gap-2 text-white font-semibold mb-1">
-                <Cloud size={15} className="text-[#F5C518]" />
-                <span>Drizzle ORM + Neon Database</span>
-              </div>
-              <p className="leading-relaxed">
-                Your account and watchlist data are synced with your cloud Neon PostgreSQL serverless database.
-              </p>
-            </div>
-            <div className="rounded-xl border border-zinc-900 bg-zinc-900/40 p-4">
-              <div className="flex items-center gap-2 text-white font-semibold mb-1">
-                <ShieldCheck size={15} className="text-emerald-400" />
-                <span>Passwordless Google Authentication</span>
-              </div>
-              <p className="leading-relaxed">
-                Protected by Better Auth with secure Google OAuth2 tokens. No passwords are stored or required.
-              </p>
-            </div>
-          </div>
         </section>
 
         {/* Sign Out Section */}

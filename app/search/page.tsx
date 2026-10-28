@@ -51,18 +51,18 @@ function SearchResults() {
         MOVIEZZ
       </div>
 
-      <div className="relative z-10 mx-auto max-w-5xl px-6 pt-10 pb-20">
-        <div className="mb-14 relative">
-          <p className="mb-3 text-sm tracking-[0.3em] text-yellow-500/70 uppercase">
+      <div className="relative z-10 mx-auto max-w-5xl px-4 pt-8 pb-32 md:px-6 md:pt-10 md:pb-20">
+        <div className="mb-8 md:mb-14 relative">
+          <p className="mb-2 md:mb-3 text-xs md:text-sm tracking-[0.3em] text-yellow-500/70 uppercase">
             Search Results
           </p>
-          <h1 className="max-w-3xl text-5xl leading-tight font-black tracking-tight md:text-6xl">
+          <h1 className="max-w-3xl text-3xl sm:text-4xl leading-tight font-black tracking-tight md:text-6xl">
             Explore results for{" "}
             <span className="text-[#F5C518]">&quot;{query}&quot;</span>
             {/* in{" "}            {type === "movie" ? "movies" : "series"} */}
           </h1>
-          <div className="mt-6 h-0.5 w-55 bg-linear-to-r from-[#F5C518] to-transparent" />
-          <div className="flex  border-gray-400 absolute bottom-0 right-0 h-10 w-64 items-center rounded-2xl bg-muted p-1">
+          <div className="mt-4 md:mt-6 h-0.5 w-40 md:w-55 bg-linear-to-r from-[#F5C518] to-transparent" />
+          <div className="mt-5 flex border-gray-400 md:mt-0 md:absolute md:bottom-0 md:right-0 h-10 w-full max-w-64 md:w-64 items-center rounded-2xl bg-muted p-1">
             <button
               onClick={() => setType("all")}
               className={cn(
@@ -160,19 +160,19 @@ function SearchContent({
 
   return (
     <div className="relative">
-      <div className="fixed top-1/2 right-6 z-50 -translate-y-1/2">
-        <div className="flex flex-col items-center gap-4 rounded-3xl border border-white/10 bg-black/40 p-3 backdrop-blur-xl">
+      <div className="fixed bottom-18 right-4 z-50 md:bottom-auto md:top-1/2 md:right-6 md:-translate-y-1/2">
+        <div className="flex flex-row items-center gap-3 rounded-2xl border border-white/10 bg-black/80 p-2 backdrop-blur-xl md:flex-col md:gap-4 md:rounded-3xl md:bg-black/40 md:p-3">
           <button
             onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
             disabled={page === 1 || isFetching}
-            className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-2xl text-white transition-all duration-300 hover:scale-110 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-xl text-white transition-all duration-300 hover:scale-110 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 md:h-12 md:w-12 md:rounded-2xl md:text-2xl"
           >
             -
           </button>
 
-          <div className="flex flex-col items-center">
-            <span className="text-3xl font-black text-white">{page}</span>
-            <span className="text-xs tracking-[0.3em] text-white/40 uppercase">
+          <div className="flex flex-col items-center px-1 md:px-0">
+            <span className="text-xl font-black text-white md:text-3xl">{page}</span>
+            <span className="text-[10px] tracking-[0.2em] text-white/40 uppercase md:text-xs md:tracking-[0.3em]">
               / {totalPages}
             </span>
           </div>
@@ -180,7 +180,7 @@ function SearchContent({
           <button
             onClick={() => setPage((prev) => Math.min(prev + 1, totalPages))}
             disabled={page >= totalPages || isFetching}
-            className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-2xl text-white transition-all duration-300 hover:scale-110 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30"
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-xl text-white transition-all duration-300 hover:scale-110 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-30 md:h-12 md:w-12 md:rounded-2xl md:text-2xl"
           >
             +
           </button>
@@ -188,7 +188,7 @@ function SearchContent({
       </div>
 
       <div
-        className={`grid grid-cols-2 gap-6 transition-opacity duration-300 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 ${
+        className={`grid grid-cols-2 gap-4 sm:gap-6 transition-opacity duration-300 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 ${
           isFetching ? "opacity-70" : "opacity-100"
         }`}
       >

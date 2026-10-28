@@ -30,6 +30,8 @@ import {
   getGuestWatchlist,
   saveGuestWatchlist,
 } from "@/lib/watchlist-client";
+import SimilarModal from "@/components/SimilarModal";
+import type { SearchItem } from "@/types/tmdb";
 
 /* -------------------------------------------------------------------------- */
 /*  Types & Constants                                                         */
@@ -280,6 +282,14 @@ export default function WishlistPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [pickId, setPickId] = useState<number | null>(null);
+  const [recState, setRecState] = useState<{
+    open: boolean;
+    seedTitle: string;
+    seedType: MediaType;
+    recommendations: SearchItem[];
+    similar: SearchItem[];
+  } | null>(null);
+  const [loadingRecs, setLoadingRecs] = useState(false);
 
   const [toast, setToast] = useState<{
     message: string;
@@ -835,6 +845,39 @@ export default function WishlistPage() {
               <div className="ml-auto flex items-center gap-2">
                 <button
                   type="button"
+                  disabled={loadingRecs}
+                  onClick={async () => {
+                    const seed =
+                      visible.find((i) => i.pinned) ||
+                      visible[0] ||
+                      items[0];
+                    if (!seed) return;
+                    setLoadingRecs(true);
+                    try {
+                      const res = await fetch(
+                        `/api/recommendations?id=${seed.id}&type=${seed.type}`,
+                      );
+                      const data = await res.json();
+                      setRecState({
+                        open: true,
+                        seedTitle: seed.title,
+                        seedType: seed.type,
+                        recommendations: data.recommendations || [],
+                        similar: data.similar || [],
+                      });
+                    } catch (e) {
+                      console.error("Failed to fetch recommendations:", e);
+                    } finally {
+                      setLoadingRecs(false);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-semibold text-[#F5C518] ring-1 ring-[#F5C518]/30 transition hover:bg-zinc-800 cursor-pointer disabled:opacity-50"
+                >
+                  <Sparkles size={13} />
+                  <span>{loadingRecs ? "Loading..." : "For You"}</span>
+                </button>
+                <button
+                  type="button"
                   onClick={pickForMe}
                   className="flex items-center gap-1.5 rounded-full bg-zinc-900 px-3.5 py-1.5 text-xs font-semibold text-zinc-300 ring-1 ring-zinc-800 transition hover:bg-zinc-800 hover:text-white cursor-pointer"
                 >
@@ -1156,6 +1199,16 @@ export default function WishlistPage() {
             <Undo2 size={14} /> Undo
           </button>
         </div>
+      )}
+
+      {recState?.open && (
+        <SimilarModal
+          title={recState.seedTitle}
+          defaultType={recState.seedType}
+          recommendations={recState.recommendations}
+          similar={recState.similar}
+          onClose={() => setRecState(null)}
+        />
       )}
     </div>
   );
