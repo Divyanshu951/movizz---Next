@@ -3,13 +3,17 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --primary: #f5c518;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-primary: var(--primary);
+
+  --font-calistoga: var(--font-calistoga);
+  --font-serif: var(--font-serif);
+  --font-sans: var(--font-sans);
 }
 
 @media (prefers-color-scheme: dark) {

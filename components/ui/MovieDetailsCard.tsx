@@ -1,33 +1,28 @@
-import { useParams, useSearchParams } from "react-router-dom";
+"use client";
+
+// import { useParams, useSearchParams } from "react-router-dom";
 import SideNavBar from "./SideNavBar";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { fetchMovieDetails } from "../../api/api";
-import { Suspense, useState } from "react";
-import MovieDetailsFallback from "../MovieDetailsFallback";
+// import { useSuspenseQuery } from "@tanstack/react-query";
+// import { fetchMovieDetails } from "../../api/api";
+// import { Suspense, useState } from "react";
+// import MovieDetailsFallback from "../MovieDetailsFallback";
 import Reviews from "../Reviews";
+import { useState } from "react";
 
-export default function MovieDetailsCard() {
-  return (
-    <Suspense fallback={<MovieDetailsFallback />}>
-      <MovieDetailsContent />
-    </Suspense>
-  );
-}
+// export default function MovieDetailsCard() {
+//   return (
+//     <Suspense fallback={<MovieDetailsFallback />}>
+//       <MovieDetailsContent />
+//     </Suspense>
+//   );
+// }
 
-function MovieDetailsContent() {
+function TitleDetails({ data, type }: { data: any; type: "movie" | "tv" }) {
   const [showReviews, setShowReviews] = useState(false);
 
-  const searchParams = useParams();
-  const movieId = searchParams.movieId;
-  const [params] = useSearchParams();
-  const type = params.get("type");
-
-  const { data } = useSuspenseQuery({
-    queryKey: ["movieDetails", movieId],
-    queryFn: () => fetchMovieDetails(movieId!, type!),
-  });
-
   const {
+    id,
+    original_title,
     backdrop_path,
     genres,
     imdb_id,
@@ -45,12 +40,18 @@ function MovieDetailsContent() {
     first_air_date,
   } = data;
 
-  console.log(data);
-
   return (
     <div className="bg-red-100">
       <SideNavBar id={imdb_id!} title={title} toggleReviews={setShowReviews} />
-      {showReviews && <Reviews toggleReviews={setShowReviews} />}
+      {showReviews && (
+        <Reviews
+          movieId={id}
+          title={original_title}
+          toggleReviews={setShowReviews}
+          type={type}
+        />
+      )}
+      {/* {showReviews && <Reviews toggleReviews={setShowReviews} />} */}
       <img
         src={
           !backdrop_path
@@ -158,8 +159,10 @@ function MovieDetailsContent() {
         </div>
       </div>
       <p className="font-calistoga absolute bottom-40 left-[50%] translate-x-[-50%] text-center text-5xl opacity-0 md:opacity-100">
-        "{tagline ? tagline : "NA"}"
+        {tagline && `"${tagline}"`}
       </p>
     </div>
   );
 }
+
+export default TitleDetails;

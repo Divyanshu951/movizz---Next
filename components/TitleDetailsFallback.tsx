@@ -1,4 +1,4 @@
-export default function MovieDetailsFallback() {
+export default function TitleDetailsFallback() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-black text-white">
       {/* Background Skeleton */}
