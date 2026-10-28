@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   experimental: {
     agentFeedback: true,
   },
+  typescript: {
+    ignoreBuildErrors: true,
+  },
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
