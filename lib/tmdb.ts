@@ -6,25 +6,49 @@ import {
   TMDBPersonDetails,
 } from "@/types/tmdb";
 
-const DEFAULT_TMDB_TOKEN =
+export const DEFAULT_TMDB_TOKEN =
   "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0OTI2OWJiYjEyZDcxNWFhZGIxMDMwYjdjYTM2YjY0MyIsIm5iZiI6MTc3NTA4NzA1Mi4xMDA5OTk4LCJzdWIiOiI2OWNkYWRjYzY2MzYwZTA1YWI0ZDE5YWEiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0._T3ASCaKVi64A2dblOimjAluHRuwG5Wv7YxJD-zC3x8";
 
-const token = (process.env.TMDB_TOKEN || DEFAULT_TMDB_TOKEN)
-  .replace(/^["']|["';]+$/g, "")
-  .trim();
+export const TMDB_BASE_URL = "https://api.themoviedb.org/3";
 
-const BASE_URL =
-  process.env.BASE_URL?.replace(/^["']|["';]+$/g, "").trim() ||
-  "https://api.themoviedb.org/3";
+function getCleanToken(): string {
+  const raw = process.env.TMDB_TOKEN?.replace(/^["']|["';]+$/g, "").trim();
+  if (raw && raw.startsWith("eyJ")) {
+    return raw;
+  }
+  return DEFAULT_TMDB_TOKEN;
+}
 
-const options: RequestInit = {
-  method: "GET",
-  headers: {
-    accept: "application/json",
-    Authorization: `Bearer ${token}`,
-  },
-  next: { revalidate: 3600 }, // Cache for 1 hour in Next.js
-};
+async function tmdbFetch(endpoint: string): Promise<Response> {
+  const primaryToken = getCleanToken();
+  const url = `${TMDB_BASE_URL}${endpoint}`;
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      headers: {
+        accept: "application/json",
+        Authorization: `Bearer ${primaryToken}`,
+      },
+      next: { revalidate: 3600 },
+    });
+
+    if (res.ok || primaryToken === DEFAULT_TMDB_TOKEN) {
+      return res;
+    }
+  } catch {
+    // Fall through to retry with DEFAULT_TMDB_TOKEN
+  }
+
+  return fetch(url, {
+    method: "GET",
+    headers: {
+      accept: "application/json",
+      Authorization: `Bearer ${DEFAULT_TMDB_TOKEN}`,
+    },
+    next: { revalidate: 3600 },
+  });
+}
 
 export const getTitleDetails = async (
   id: string | number,
@@ -33,17 +57,15 @@ export const getTitleDetails = async (
   const mediaType: "movie" | "tv" = type === "tv" ? "tv" : "movie";
   const append =
     "videos,credits,recommendations,similar,watch/providers,external_ids";
-  let res = await fetch(
-    `${BASE_URL}/${mediaType}/${id}?language=en-US&append_to_response=${append}`,
-    options,
+  let res = await tmdbFetch(
+    `/${mediaType}/${id}?language=en-US&append_to_response=${append}`,
   );
 
   // If 404, try fallback media type in case type query param was omitted or mismatched
   if (res.status === 404) {
     const fallbackType = mediaType === "movie" ? "tv" : "movie";
-    const fallbackRes = await fetch(
-      `${BASE_URL}/${fallbackType}/${id}?language=en-US&append_to_response=${append}`,
-      options,
+    const fallbackRes = await tmdbFetch(
+      `/${fallbackType}/${id}?language=en-US&append_to_response=${append}`,
     );
     if (fallbackRes.ok) {
       res = fallbackRes;
@@ -65,9 +87,8 @@ export const getTvSeasonDetails = async (
   seasonNumber: number,
 ): Promise<TMDBSeasonDetails | null> => {
   try {
-    const res = await fetch(
-      `${BASE_URL}/tv/${tvId}/season/${seasonNumber}?language=en-US`,
-      options,
+    const res = await tmdbFetch(
+      `/tv/${tvId}/season/${seasonNumber}?language=en-US`,
     );
     if (!res.ok) return null;
     return await res.json();
@@ -81,9 +102,8 @@ export const getPersonDetails = async (
   personId: string | number,
 ): Promise<TMDBPersonDetails | null> => {
   try {
-    const res = await fetch(
-      `${BASE_URL}/person/${personId}?language=en-US&append_to_response=combined_credits`,
-      options,
+    const res = await tmdbFetch(
+      `/person/${personId}?language=en-US&append_to_response=combined_credits`,
     );
     if (!res.ok) return null;
     return await res.json();
@@ -98,10 +118,7 @@ export const getTitleReviews = async (
   type: "movie" | "tv" = "movie",
 ): Promise<TMDBReview[]> => {
   try {
-    const res = await fetch(
-      `${BASE_URL}/${type}/${id}/reviews?language=en-US&page=1`,
-      options,
-    );
+    const res = await tmdbFetch(`/${type}/${id}/reviews?language=en-US&page=1`);
 
     if (!res.ok) return [];
 
@@ -118,9 +135,8 @@ export const getTrending = async (
   timeWindow: "day" | "week" = "day",
 ): Promise<SearchItem[]> => {
   try {
-    const res = await fetch(
-      `${BASE_URL}/trending/${type}/${timeWindow}?language=en-US`,
-      options,
+    const res = await tmdbFetch(
+      `/trending/${type}/${timeWindow}?language=en-US`,
     );
     if (!res.ok) return [];
     const data = await res.json();
@@ -135,10 +151,7 @@ export const getPopular = async (
   type: "movie" | "tv" = "movie",
 ): Promise<SearchItem[]> => {
   try {
-    const res = await fetch(
-      `${BASE_URL}/${type}/popular?language=en-US&page=1`,
-      options,
-    );
+    const res = await tmdbFetch(`/${type}/popular?language=en-US&page=1`);
     if (!res.ok) return [];
     const data = await res.json();
     return data.results || [];
@@ -152,10 +165,7 @@ export const getTopRated = async (
   type: "movie" | "tv" = "movie",
 ): Promise<SearchItem[]> => {
   try {
-    const res = await fetch(
-      `${BASE_URL}/${type}/top_rated?language=en-US&page=1`,
-      options,
-    );
+    const res = await tmdbFetch(`/${type}/top_rated?language=en-US&page=1`);
     if (!res.ok) return [];
     const data = await res.json();
     return data.results || [];
@@ -171,11 +181,10 @@ export const searchTitles = async (
 ): Promise<SearchItem[]> => {
   if (!query || !query.trim()) return [];
   try {
-    const res = await fetch(
-      `${BASE_URL}/search/${type}?query=${encodeURIComponent(
+    const res = await tmdbFetch(
+      `/search/${type}?query=${encodeURIComponent(
         query.trim(),
       )}&include_adult=false&language=en-US&page=1`,
-      options,
     );
     if (!res.ok) return [];
     const data = await res.json();

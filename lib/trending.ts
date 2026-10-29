@@ -22,7 +22,36 @@ export async function fetchTrending(type: string) {
   }
 
   const data = await res.json();
-  console.log(data);
-
   return data;
+}
+
+export async function fetchTitleDetailsClient(
+  id: string | number,
+  type: "movie" | "tv" = "movie",
+) {
+  const mediaType: "movie" | "tv" = type === "tv" ? "tv" : "movie";
+  const append =
+    "videos,credits,recommendations,similar,watch/providers,external_ids";
+
+  let res = await fetch(
+    `${BASE_URL}/${mediaType}/${id}?language=en-US&append_to_response=${append}`,
+    options,
+  );
+
+  if (res.status === 404) {
+    const fallbackType = mediaType === "movie" ? "tv" : "movie";
+    const fallbackRes = await fetch(
+      `${BASE_URL}/${fallbackType}/${id}?language=en-US&append_to_response=${append}`,
+      options,
+    );
+    if (fallbackRes.ok) {
+      res = fallbackRes;
+    }
+  }
+
+  if (!res.ok) {
+    throw new Error(`Failed to fetch title details (${res.status})`);
+  }
+
+  return await res.json();
 }

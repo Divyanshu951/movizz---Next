@@ -12,6 +12,7 @@ import WatchProvidersModal from "../WatchProvidersModal";
 import CastModal from "../CastModal";
 import SimilarModal from "../SimilarModal";
 import SeasonsModal from "../SeasonsModal";
+import TitleDetailsFallback from "../TitleDetailsFallback";
 import { useEffect, useState } from "react";
 import { BookmarkCheck } from "lucide-react";
 import {
@@ -19,6 +20,7 @@ import {
   getGuestWatchlist,
   removeGuestItem,
 } from "@/lib/watchlist-client";
+import { fetchTitleDetailsClient } from "@/lib/trending";
 
 // export default function MovieDetailsCard() {
 //   return (
@@ -28,7 +30,17 @@ import {
 //   );
 // }
 
-function TitleDetails({ data, type }: { data: any; type: "movie" | "tv" }) {
+function TitleDetails({
+  data: initialData,
+  titleId,
+  type,
+}: {
+  data: any;
+  titleId?: string;
+  type: "movie" | "tv";
+}) {
+  const [data, setData] = useState<any>(initialData);
+  const [clientLoading, setClientLoading] = useState<boolean>(!initialData);
   const [showReviews, setShowReviews] = useState(false);
   const [showTrailer, setShowTrailer] = useState(false);
   const [showProviders, setShowProviders] = useState(false);
@@ -37,8 +49,34 @@ function TitleDetails({ data, type }: { data: any; type: "movie" | "tv" }) {
   const [showSeasons, setShowSeasons] = useState(false);
   const [isOnWatchList, setIsOnWatchList] = useState(false);
 
+  useEffect(() => {
+    if (initialData) {
+      setData(initialData);
+      setClientLoading(false);
+      return;
+    }
+    if (!titleId) return;
+
+    let cancelled = false;
+    setClientLoading(true);
+    fetchTitleDetailsClient(titleId, type)
+      .then((res) => {
+        if (!cancelled) setData(res);
+      })
+      .catch((err) => {
+        console.error("Client title fetch failed:", err);
+      })
+      .finally(() => {
+        if (!cancelled) setClientLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [initialData, titleId, type]);
+
   const {
-    id,
+    id = titleId,
     original_title,
     backdrop_path,
     genres = [],
@@ -175,6 +213,10 @@ function TitleDetails({ data, type }: { data: any; type: "movie" | "tv" }) {
       }
     }
   };
+
+  if (clientLoading && !data) {
+    return <TitleDetailsFallback />;
+  }
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-black md:bg-red-100">
