@@ -77,11 +77,13 @@ function TitleDetails({ data, type }: { data: any; type: "movie" | "tv" }) {
         const res = await fetch("/api/watchlist", { method: "GET" });
         const result = await res.json();
         if (res.ok && result.authenticated) {
-          const exists = Array.isArray(result.items) && result.items.some(
-            (item: any) =>
-              item.id === Number(id) &&
-              (!type || !item.type || item.type === type),
-          );
+          const exists =
+            Array.isArray(result.items) &&
+            result.items.some(
+              (item: any) =>
+                item.id === Number(id) &&
+                (!type || !item.type || item.type === type),
+            );
           setIsOnWatchList(exists);
         } else {
           const guestItems = getGuestWatchlist();
@@ -187,7 +189,7 @@ function TitleDetails({ data, type }: { data: any; type: "movie" | "tv" }) {
         toggleSimilar={setShowSimilar}
         toggleSeasons={setShowSeasons}
         isTv={type === "tv"}
-        isOnWatchList={isOnWatchList}
+        // isOnWatchList={isOnWatchList}
       />
       {showReviews && (
         <Reviews
@@ -287,7 +289,9 @@ function TitleDetails({ data, type }: { data: any; type: "movie" | "tv" }) {
         </div>
         <div className="flex flex-col gap-3 self-end text-white md:gap-4">
           <div className="flex flex-wrap items-center gap-2 md:flex-nowrap md:gap-3">
-            <p className="min-w-16 text-sm md:min-w-17.5 md:text-lg">Country:</p>
+            <p className="min-w-16 text-sm md:min-w-17.5 md:text-lg">
+              Country:
+            </p>
             {origin_country.map((country) => (
               <span
                 key={country}
