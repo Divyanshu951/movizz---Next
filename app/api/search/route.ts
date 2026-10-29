@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
+const DEFAULT_TMDB_TOKEN =
+  "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0OTI2OWJiYjEyZDcxNWFhZGIxMDMwYjdjYTM2YjY0MyIsIm5iZiI6MTc3NTA4NzA1Mi4xMDA5OTk4LCJzdWIiOiI2OWNkYWRjYzY2MzYwZTA1YWI0ZDE5YWEiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0._T3ASCaKVi64A2dblOimjAluHRuwG5Wv7YxJD-zC3x8";
+
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
 
@@ -14,13 +17,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Query is required" }, { status: 400 });
   }
 
-  if (!process.env.TMDB_TOKEN) {
-    console.error("TMDB_TOKEN is not set");
-    return NextResponse.json(
-      { error: "Server misconfigured" },
-      { status: 500 },
-    );
-  }
+  const token = (process.env.TMDB_TOKEN || DEFAULT_TMDB_TOKEN)
+    .replace(/^["']|["';]+$/g, "")
+    .trim();
 
   try {
     const url = new URL("https://api.themoviedb.org/3/search/multi");
@@ -31,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     const response = await fetch(url, {
       headers: {
-        Authorization: `Bearer ${process.env.TMDB_TOKEN}`,
+        Authorization: `Bearer ${token}`,
         accept: "application/json",
       },
       next: { revalidate: 3600 },
@@ -50,8 +49,8 @@ export async function GET(request: NextRequest) {
     const allowed: string[] =
       type === "movie" || type === "tv" ? [type] : ["movie", "tv"];
 
-    const results = (data.results as { media_type: string }[]).filter((item) =>
-      allowed.includes(item.media_type),
+    const results = ((data.results as { media_type: string }[]) || []).filter(
+      (item) => allowed.includes(item.media_type),
     );
 
     // Return the body directly (no { data } wrapper)

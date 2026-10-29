@@ -41,27 +41,27 @@ function TitleDetails({ data, type }: { data: any; type: "movie" | "tv" }) {
     id,
     original_title,
     backdrop_path,
-    genres,
+    genres = [],
     imdb_id,
     external_ids,
-    origin_country,
-    overview,
+    origin_country = [],
+    overview = "",
     poster_path,
-    production_companies,
+    production_companies = [],
     release_date,
     runtime,
     tagline,
     title,
     name,
-    vote_average,
-    seasons,
+    vote_average = 0,
+    seasons = [],
     first_air_date,
     videos,
     credits,
     created_by,
     recommendations,
     similar,
-  } = data;
+  } = data || {};
 
   const resolvedImdbId = imdb_id || external_ids?.imdb_id || "";
   const displayName = title || name || original_title || "Untitled";
@@ -189,7 +189,7 @@ function TitleDetails({ data, type }: { data: any; type: "movie" | "tv" }) {
         toggleSimilar={setShowSimilar}
         toggleSeasons={setShowSeasons}
         isTv={type === "tv"}
-        // isOnWatchList={isOnWatchList}
+        isOnWatchList={isOnWatchList}
       />
       {showReviews && (
         <Reviews
@@ -257,21 +257,25 @@ function TitleDetails({ data, type }: { data: any; type: "movie" | "tv" }) {
       <div className="relative z-10 grid min-h-screen w-full grid-cols-1 gap-6 px-5 pt-8 pb-28 pr-14 md:absolute md:inset-0 md:h-screen md:grid-cols-2 md:gap-0 md:p-10">
         <h1 className="max-w-full text-3xl font-semibold text-shadow-2xs sm:text-5xl md:max-w-[80%] md:text-7xl">
           {type === "tv"
-            ? name
-            : title.split(":").map((ttl, i, arr) => (
-                <span key={i}>
-                  {ttl.trim()}
-                  {i < arr.length - 1 && ":"}
-                  <br />
-                </span>
-              ))}
+            ? name || title || displayName
+            : (title || name || displayName)
+                .split(":")
+                .map((ttl: string, i: number, arr: string[]) => (
+                  <span key={i}>
+                    {ttl.trim()}
+                    {i < arr.length - 1 && ":"}
+                    <br />
+                  </span>
+                ))}
         </h1>
         <div className="text-sm leading-relaxed sm:text-base max-w-full md:text-md md:max-w-[60%] md:justify-self-end">
           {overview}
           <div className="mt-4 flex flex-wrap items-center gap-3 md:mt-10 md:gap-5">
             <div className="text-md  flex max-w-27 justify-center gap-2 rounded-full bg-[#F5C518]/80 py-1 px-3 text-black">
               <span className="font-sans">IMDB</span>
-              <span className="font-semibold">{vote_average.toFixed(1)}</span>
+              <span className="font-semibold">
+                {Number(vote_average || 0).toFixed(1)}
+              </span>
             </div>
 
             {isOnWatchList && (

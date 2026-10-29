@@ -6,9 +6,15 @@ import {
   TMDBPersonDetails,
 } from "@/types/tmdb";
 
-const token = process.env.TMDB_TOKEN;
+const DEFAULT_TMDB_TOKEN =
+  "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI0OTI2OWJiYjEyZDcxNWFhZGIxMDMwYjdjYTM2YjY0MyIsIm5iZiI6MTc3NTA4NzA1Mi4xMDA5OTk4LCJzdWIiOiI2OWNkYWRjYzY2MzYwZTA1YWI0ZDE5YWEiLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0._T3ASCaKVi64A2dblOimjAluHRuwG5Wv7YxJD-zC3x8";
+
+const token = (process.env.TMDB_TOKEN || DEFAULT_TMDB_TOKEN)
+  .replace(/^["']|["';]+$/g, "")
+  .trim();
+
 const BASE_URL =
-  process.env.BASE_URL?.replace(/;$/, "").trim() ||
+  process.env.BASE_URL?.replace(/^["']|["';]+$/g, "").trim() ||
   "https://api.themoviedb.org/3";
 
 const options: RequestInit = {
@@ -24,16 +30,29 @@ export const getTitleDetails = async (
   id: string | number,
   type: "movie" | "tv" = "movie",
 ): Promise<TMDBTitleDetails> => {
+  const mediaType: "movie" | "tv" = type === "tv" ? "tv" : "movie";
   const append =
     "videos,credits,recommendations,similar,watch/providers,external_ids";
-  const res = await fetch(
-    `${BASE_URL}/${type}/${id}?language=en-US&append_to_response=${append}`,
+  let res = await fetch(
+    `${BASE_URL}/${mediaType}/${id}?language=en-US&append_to_response=${append}`,
     options,
   );
 
+  // If 404, try fallback media type in case type query param was omitted or mismatched
+  if (res.status === 404) {
+    const fallbackType = mediaType === "movie" ? "tv" : "movie";
+    const fallbackRes = await fetch(
+      `${BASE_URL}/${fallbackType}/${id}?language=en-US&append_to_response=${append}`,
+      options,
+    );
+    if (fallbackRes.ok) {
+      res = fallbackRes;
+    }
+  }
+
   if (!res.ok) {
     throw new Error(
-      `Failed to fetch ${type} details for ID ${id} (${res.status})`,
+      `Failed to fetch ${mediaType} details for ID ${id} (${res.status})`,
     );
   }
 
